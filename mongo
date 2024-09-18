@@ -1,0 +1,134 @@
+users
+- user_id (string, primary key)
+- name (string)
+- email (string)
+- password (string)
+- role (string)
+
+codekata
+- user_id (string, foreign key references users.user_id)
+- problem_id (string)
+- date (date)
+- score (int)
+
+attendance
+- user_id (string, foreign key references users.user_id)
+- date (date)
+- present (boolean)
+
+topics
+- topic_id (string, primary key)
+- name (string)
+
+tasks
+- task_id (string, primary key)
+- topic_id (string, foreign key references topics.topic_id)mkdi
+- description (string)
+- deadline (date)
+
+company_drives
+- company_drive_id (string, primary key)
+- company_name (string)
+- date (date)
+
+mentors
+- mentor_id (string, primary key)
+- name (string)
+
+mentees
+- mentor_id (string, foreign key references mentors.mentor_id)
+- mentee_id (string, foreign key references users.user_id)
+
+
+1. Find all the topics and tasks which are thought in the month of October
+ans: db.tasks.find({ deadline: { $gte: ISODate('2020-10-01'), $lte: ISODate('2020-10-31') }})
+2. Find all the company drives which appeared between 15 oct-2020 and 31-oct-2020
+ans : db.company_drives.find({ date: { $gte: ISODate('2020-10-15'), $lte: ISODate('2020-10-31') }})
+3. To find all the company drives and students who appeared for the placement:
+ans: db.attendance.aggregate([
+  { $match: { present: true } },
+  {
+    $lookup:
+      {
+        from: "company_drives",
+        localField: "date",
+        foreignField: "date",
+        as: "company_drives"
+      }
+  },
+  {
+    $lookup:
+      {
+        from: "users",
+        localField: "user_id",
+        foreignField: "user_id",
+        as: "user"
+      }
+  },
+  { $unwind: "$company_drives" },
+  { $unwind: "$user" },
+  { $project: { "company_drives.company_name": 1, "user.name": 1 } }
+])
+
+4. To find the number of problems solved by the user in codekata:
+ans: db.codekata.aggregate([
+  { $match: { user_id: "user1" } },
+  { $group: { _id: "$user_id", total_score: { $sum: "$score" } } }
+])
+
+5. To find all the mentors who have a mentee count more than 15:
+ans: db.mentors.aggregate([
+  {
+    $lookup:
+      {
+        from: "mentees",
+        localField: "mentor_id",
+        foreignField: "mentor_id",
+        as: "mentees"
+      }
+  },
+  { $project: { name: 1, mentee_count: { $size: "$mentees" } } },
+  { $match: { mentee_count: { $gt: 15 } } }
+])
+
+6. To find the number of users who are absent and the task is not submitted between 15 oct-2020 and 31-oct-2020:
+ans: db.tasks.aggregate([
+  {
+    $lookup:
+      {
+        from: "attendance",
+        localField: "deadline",
+        foreignField: "date",
+        as: "attendance"
+      }
+  },
+  {
+    $lookup:
+      {
+        from: "users",
+        localField: "user_id",
+        foreignField: "user_id",
+        as: "user"
+      }
+  },
+  { $unwind: "$attendance" },
+  { $unwind: "$user" },
+  {
+    $match:
+      {
+        "attendance.present": false,
+        deadline: { $gte: ISODate('2020-10-15'), $lte: ISODate('2020-10-31') }
+      }
+  },
+  {
+    $lookup:
+      {
+        from: "tasks",
+        localField: "user.user_id",
+        foreignField: "user_id",
+        as: "tasks"
+      }
+  },
+  { $match: { "tasks.task_id": { $exists: false } } },
+  { $count: "users_not_submitted_task_and_absent" }
+])
